@@ -1,0 +1,13 @@
+
+{
+  "name": "todo-list",
+  "outputfilename": "todo-list",
+  "author": {
+    "name": "Developer",
+    "email": "dev@example.com"
+  },
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto"
+}
