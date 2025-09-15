@@ -1,0 +1,18 @@
+/build/
+/bin/
+/dist/
+/tmp/
+/*.exe
+*.log
+app.log
+
+# Frontend
+/frontend/node_modules/
+/frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+
+# Secrets
+.env

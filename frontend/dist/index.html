@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Todo List</title>
+  <script type="module" crossorigin src="/assets/index-DnMXWf9F.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-FEaUbkse.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>Todo List</h1>
+        </header>
+        
+        <main>
+            <!-- Форма добавления задачи -->
+            <div class="add-todo-form">
+                <div class="form-row">
+                    <input type="text" id="todo-title" placeholder="Название задачи..." required>
+                    <button id="add-btn">Добавить</button>
+                </div>
+                <div class="form-row">
+                    <textarea id="todo-description" placeholder="Описание (необязательно)"></textarea>
+                </div>
+                <div class="form-row">
+                    <select id="todo-priority">
+                        <option value="low">Низкий приоритет</option>
+                        <option value="medium" selected>Средний приоритет</option>
+                        <option value="high">Высокий приоритет</option>
+                    </select>
+                    <input type="datetime-local" id="todo-duedate" title="Дата и время выполнения">
+                </div>
+            </div>
+
+            <!-- Фильтры и сортировка -->
+            <div class="controls">
+                <div class="filters">
+                    <div class="filter-group">
+                        <label>Статус:</label>
+                        <select id="status-filter">
+                            <option value="all">Все задачи</option>
+                            <option value="active">Активные</option>
+                            <option value="completed">Выполненные</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>По дате:</label>
+                        <select id="date-filter">
+                            <option value="all">Все даты</option>
+                            <option value="today">Сегодня</option>
+                            <option value="week">На неделю</option>
+                            <option value="overdue">Просроченные</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Сортировка:</label>
+                        <select id="sort-filter">
+                            <option value="">По умолчанию</option>
+                            <option value="date">По дате добавления</option>
+                            <option value="priority">По приоритету</option>
+                            <option value="dueDate">По дате выполнения</option>
+                        </select>
+                        <button id="sort-order" title="Порядок сортировки">↓</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Статистика -->
+            <div class="stats">
+                <span id="total-tasks">Всего: 0</span>
+                <span id="active-tasks">Активных: 0</span>
+                <span id="completed-tasks">Выполненных: 0</span>
+            </div>
+
+            <!-- Список задач -->
+            <div id="todo-list"></div>
+        </main>
+    </div>
+
+    <!-- Модальное окно подтверждения удаления -->
+    <div id="delete-modal" class="modal">
+        <div class="modal-content">
+            <h3>Подтверждение удаления</h3>
+            <p>Вы уверены, что хотите удалить эту задачу?</p>
+            <div class="modal-actions">
+                <button id="confirm-delete" class="btn-danger">Удалить</button>
+                <button id="cancel-delete" class="btn-secondary">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

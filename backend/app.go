@@ -19,6 +19,16 @@ type Task struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// App структура приложения
+type App struct {
+	taskManager *TaskManager
+}
+
+// NewApp создает новый экземпляр приложения
+func NewApp() *App {
+	return &App{}
+}
+
 // TaskManager управляет задачами
 type TaskManager struct {
 	tasks    []Task
@@ -28,7 +38,6 @@ type TaskManager struct {
 
 // NewTaskManager создает новый менеджер задач
 func NewTaskManager() *TaskManager {
-	// Получаем путь к файлу данных
 	homeDir, _ := os.UserHomeDir()
 	filename := filepath.Join(homeDir, ".todo-list.json")
 
@@ -138,6 +147,216 @@ func (a *App) GetFilteredTasks(filter string) []Task {
 			}
 		default: // "all"
 			filtered = append(filtered, task)
+		}
+	}
+
+	return filtered
+}
+
+// GetTasksByDateFilter возвращает задачи по фильтру даты
+func (a *App) GetTasksByDateFilter(filter string) []Task {
+	if a.taskManager == nil {
+		a.taskManager = NewTaskManager()
+	}
+
+	var filtered []Task
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	weekFromNow := today.AddDate(0, 0, 7)
+
+	for _, task := range a.taskManager.tasks {
+		if task.DueDate.IsZero() {
+			continue // Пропускаем задачи без даты
+		}
+
+		taskDate := time.Date(task.DueDate.Year(), task.DueDate.Month(), task.DueDate.Day(), 0, 0, 0, 0, task.DueDate.Location())
+
+		switch filter {
+		case "today":
+			if taskDate.Equal(today) {
+				filtered = append(filtered, task)
+			}
+		case "week":
+			if taskDate.After(today.AddDate(0, 0, -1)) && taskDate.Before(weekFromNow) {
+				filtered = append(filtered, task)
+			}
+		case "overdue":
+			if taskDate.Before(today) && !task.Completed {
+				filtered = append(filtered, task)
+			}
+		default: // "all"
+			filtered = append(filtered, task)
+		}
+	}
+
+	return filtered
+}
+
+// GetSortedTasks возвращает отсортированные задачи
+func (a *App) GetSortedTasks(sortBy string, ascending bool) []Task {
+	if a.taskManager == nil {
+		a.taskManager = NewTaskManager()
+	}
+
+	tasks := make([]Task, len(a.taskManager.tasks))
+	copy(tasks, a.taskManager.tasks)
+
+	switch sortBy {
+	case "date":
+		if ascending {
+			for i := 0; i < len(tasks); i++ {
+				for j := i + 1; j < len(tasks); j++ {
+					if tasks[i].CreatedAt.After(tasks[j].CreatedAt) {
+						tasks[i], tasks[j] = tasks[j], tasks[i]
+					}
+				}
+			}
+		} else {
+			for i := 0; i < len(tasks); i++ {
+				for j := i + 1; j < len(tasks); j++ {
+					if tasks[i].CreatedAt.Before(tasks[j].CreatedAt) {
+						tasks[i], tasks[j] = tasks[j], tasks[i]
+					}
+				}
+			}
+		}
+	case "priority":
+		priorityOrder := map[string]int{"high": 3, "medium": 2, "low": 1, "": 0}
+		if ascending {
+			for i := 0; i < len(tasks); i++ {
+				for j := i + 1; j < len(tasks); j++ {
+					if priorityOrder[tasks[i].Priority] > priorityOrder[tasks[j].Priority] {
+						tasks[i], tasks[j] = tasks[j], tasks[i]
+					}
+				}
+			}
+		} else {
+			for i := 0; i < len(tasks); i++ {
+				for j := i + 1; j < len(tasks); j++ {
+					if priorityOrder[tasks[i].Priority] < priorityOrder[tasks[j].Priority] {
+						tasks[i], tasks[j] = tasks[j], tasks[i]
+					}
+				}
+			}
+		}
+	case "dueDate":
+		if ascending {
+			for i := 0; i < len(tasks); i++ {
+				for j := i + 1; j < len(tasks); j++ {
+					if !tasks[i].DueDate.IsZero() && !tasks[j].DueDate.IsZero() && tasks[i].DueDate.After(tasks[j].DueDate) {
+						tasks[i], tasks[j] = tasks[j], tasks[i]
+					}
+				}
+			}
+		} else {
+			for i := 0; i < len(tasks); i++ {
+				for j := i + 1; j < len(tasks); j++ {
+					if !tasks[i].DueDate.IsZero() && !tasks[j].DueDate.IsZero() && tasks[i].DueDate.Before(tasks[j].DueDate) {
+						tasks[i], tasks[j] = tasks[j], tasks[i]
+					}
+				}
+			}
+		}
+	}
+
+	return tasks
+}
+
+// GetCombinedFilteredTasks возвращает задачи с комбинированными фильтрами
+func (a *App) GetCombinedFilteredTasks(statusFilter, dateFilter, sortBy string, ascending bool) []Task {
+	if a.taskManager == nil {
+		a.taskManager = NewTaskManager()
+	}
+
+	// Сначала применяем фильтр по статусу
+	var filtered []Task
+	for _, task := range a.taskManager.tasks {
+		switch statusFilter {
+		case "active":
+			if !task.Completed {
+				filtered = append(filtered, task)
+			}
+		case "completed":
+			if task.Completed {
+				filtered = append(filtered, task)
+			}
+		default: // "all"
+			filtered = append(filtered, task)
+		}
+	}
+
+	// Применяем фильтр по дате
+	if dateFilter != "" && dateFilter != "all" {
+		var dateFiltered []Task
+		now := time.Now()
+		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		weekFromNow := today.AddDate(0, 0, 7)
+
+		for _, task := range filtered {
+			if task.DueDate.IsZero() && dateFilter != "all" {
+				continue
+			}
+
+			taskDate := time.Date(task.DueDate.Year(), task.DueDate.Month(), task.DueDate.Day(), 0, 0, 0, 0, task.DueDate.Location())
+
+			switch dateFilter {
+			case "today":
+				if taskDate.Equal(today) {
+					dateFiltered = append(dateFiltered, task)
+				}
+			case "week":
+				if taskDate.After(today.AddDate(0, 0, -1)) && taskDate.Before(weekFromNow) {
+					dateFiltered = append(dateFiltered, task)
+				}
+			case "overdue":
+				if taskDate.Before(today) && !task.Completed {
+					dateFiltered = append(dateFiltered, task)
+				}
+			}
+		}
+		filtered = dateFiltered
+	}
+
+	// Применяем сортировку
+	if sortBy != "" {
+		switch sortBy {
+		case "date":
+			if ascending {
+				for i := 0; i < len(filtered); i++ {
+					for j := i + 1; j < len(filtered); j++ {
+						if filtered[i].CreatedAt.After(filtered[j].CreatedAt) {
+							filtered[i], filtered[j] = filtered[j], filtered[i]
+						}
+					}
+				}
+			} else {
+				for i := 0; i < len(filtered); i++ {
+					for j := i + 1; j < len(filtered); j++ {
+						if filtered[i].CreatedAt.Before(filtered[j].CreatedAt) {
+							filtered[i], filtered[j] = filtered[j], filtered[i]
+						}
+					}
+				}
+			}
+		case "priority":
+			priorityOrder := map[string]int{"high": 3, "medium": 2, "low": 1, "": 0}
+			if ascending {
+				for i := 0; i < len(filtered); i++ {
+					for j := i + 1; j < len(filtered); j++ {
+						if priorityOrder[filtered[i].Priority] > priorityOrder[filtered[j].Priority] {
+							filtered[i], filtered[j] = filtered[j], filtered[i]
+						}
+					}
+				}
+			} else {
+				for i := 0; i < len(filtered); i++ {
+					for j := i + 1; j < len(filtered); j++ {
+						if priorityOrder[filtered[i].Priority] < priorityOrder[filtered[j].Priority] {
+							filtered[i], filtered[j] = filtered[j], filtered[i]
+						}
+					}
+				}
+			}
 		}
 	}
 

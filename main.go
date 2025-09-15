@@ -1,7 +1,13 @@
 package main
 
-import "todo-list/backend/cmd"
+import (
+	"embed"
+	"todo-list/backend/cmd"
+)
+
+//go:embed all:frontend/dist
+var Assets embed.FS
 
 func main() {
-	cmd.Start()
+	cmd.Start(Assets)
 }

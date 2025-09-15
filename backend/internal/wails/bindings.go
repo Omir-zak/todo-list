@@ -2,42 +2,99 @@ package wailsbind
 
 import (
 	"context"
-
 	"todo-list/backend/internal/models"
 	"todo-list/backend/internal/service"
 )
 
+// TaskAPI предоставляет API для работы с задачами в Wails
 type TaskAPI struct {
-	svc service.TaskService
+	ctx     context.Context
+	service *service.Service
 }
 
-func NewTaskAPI(svc service.TaskService) *TaskAPI {
-	return &TaskAPI{svc: svc}
+// NewTaskAPI создает новый экземпляр TaskAPI
+func NewTaskAPI(service *service.Service) *TaskAPI {
+	return &TaskAPI{
+		service: service,
+	}
 }
 
-// Ниже экспортируемые в JS методы (фронт можешь не писать)
-// Они доступны в окне Wails как window.runtime.Events/Bindings (в зав-ти от шаблона)
-
-func (a *TaskAPI) CreateTask(ctx context.Context, req models.CreateTaskRequest) (interface{}, error) {
-	return a.svc.CreateTask(&req)
+// Startup вызывается при старте приложения
+func (a *TaskAPI) Startup(ctx context.Context) {
+	a.ctx = ctx
 }
 
-func (a *TaskAPI) GetTask(ctx context.Context, id int64) (interface{}, error) {
-	return a.svc.GetTaskByID(int(id))
+// GetAllTodos возвращает все задачи
+func (a *TaskAPI) GetAllTodos() ([]models.Todo, error) {
+	return a.service.Todo.GetAllTodos()
 }
 
-func (a *TaskAPI) GetTasks(ctx context.Context, filter *models.TaskFilter, sort *models.TaskSort) (interface{}, error) {
-	return a.svc.GetAllTasks(filter, sort)
+// CreateTodo создает новую задачу
+func (a *TaskAPI) CreateTodo(title, description string, priority string) (*models.Todo, error) {
+	todo := &models.Todo{
+		Title:       title,
+		Description: description,
+		Priority:    priority,
+		Completed:   false,
+	}
+
+	err := a.service.Todo.CreateTodo(todo)
+	if err != nil {
+		return nil, err
+	}
+
+	return todo, nil
 }
 
-func (a *TaskAPI) UpdateTask(ctx context.Context, id int64, req models.UpdateTaskRequest) (interface{}, error) {
-	return a.svc.UpdateTask(int(id), &req)
+// UpdateTodo обновляет задачу
+func (a *TaskAPI) UpdateTodo(id uint, title, description string, priority string, completed bool) error {
+	todo := &models.Todo{
+		ID:          id,
+		Title:       title,
+		Description: description,
+		Priority:    priority,
+		Completed:   completed,
+	}
+
+	return a.service.Todo.UpdateTodo(todo)
 }
 
-func (a *TaskAPI) DeleteTask(ctx context.Context, id int64) (interface{}, error) {
-	return map[string]string{"status": "ok"}, a.svc.DeleteTask(int(id))
+// DeleteTodo удаляет задачу
+func (a *TaskAPI) DeleteTodo(id uint) error {
+	return a.service.Todo.DeleteTodo(id)
 }
 
-func (a *TaskAPI) MarkTaskCompleted(ctx context.Context, id int64, completed bool) (interface{}, error) {
-	return map[string]string{"status": "ok"}, a.svc.MarkTaskCompleted(int(id), completed)
+// ToggleTodoStatus переключает статус задачи
+func (a *TaskAPI) ToggleTodoStatus(id uint) error {
+	return a.service.Todo.ToggleTodoStatus(id)
+}
+
+// GetCompletedTodos возвращает завершенные задачи
+func (a *TaskAPI) GetCompletedTodos() ([]models.Todo, error) {
+	return a.service.Todo.GetCompletedTodos()
+}
+
+// GetPendingTodos возвращает незавершенные задачи
+func (a *TaskAPI) GetPendingTodos() ([]models.Todo, error) {
+	return a.service.Todo.GetPendingTodos()
+}
+
+// GetAllCategories возвращает все категории
+func (a *TaskAPI) GetAllCategories() ([]models.Category, error) {
+	return a.service.Category.GetAllCategories()
+}
+
+// CreateCategory создает новую категорию
+func (a *TaskAPI) CreateCategory(name, color string) (*models.Category, error) {
+	category := &models.Category{
+		Name:  name,
+		Color: color,
+	}
+
+	err := a.service.Category.CreateCategory(category)
+	if err != nil {
+		return nil, err
+	}
+
+	return category, nil
 }
