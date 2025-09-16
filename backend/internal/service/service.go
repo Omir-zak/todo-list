@@ -20,21 +20,11 @@ type TodoService interface {
 	CreateTodo(todo *models.Todo) error
 	GetTodoByID(id uint) (*models.Todo, error)
 	GetAllTodos() ([]models.Todo, error)
-	GetTodosByUserID(userID uint) ([]models.Todo, error)
 	UpdateTodo(todo *models.Todo) error
 	DeleteTodo(id uint) error
 	ToggleTodoStatus(id uint) error
 	GetCompletedTodos() ([]models.Todo, error)
 	GetPendingTodos() ([]models.Todo, error)
-}
-
-// UserService интерфейс для бизнес-логики пользователей
-type UserService interface {
-	CreateUser(user *models.User) error
-	GetUserByID(id uint) (*models.User, error)
-	GetUserByUsername(username string) (*models.User, error)
-	UpdateUser(user *models.User) error
-	DeleteUser(id uint) error
 }
 
 // CategoryService интерфейс для бизнес-логики категорий
@@ -59,17 +49,11 @@ type TaskService interface {
 // Service объединяет все сервисы
 type Service struct {
 	Todo     TodoService
-	User     UserService
 	Category CategoryService
 }
 
 // todoService реализация TodoService
 type todoService struct {
-	repo *repository.Repository
-}
-
-// userService реализация UserService
-type userService struct {
 	repo *repository.Repository
 }
 
@@ -87,7 +71,6 @@ type taskService struct {
 func NewService(repo *repository.Repository) *Service {
 	return &Service{
 		Todo:     &todoService{repo: repo},
-		User:     &userService{repo: repo},
 		Category: &categoryService{repo: repo},
 	}
 }
@@ -118,13 +101,6 @@ func (s *todoService) GetTodoByID(id uint) (*models.Todo, error) {
 
 func (s *todoService) GetAllTodos() ([]models.Todo, error) {
 	return s.repo.Todo.GetAll()
-}
-
-func (s *todoService) GetTodosByUserID(userID uint) ([]models.Todo, error) {
-	if userID == 0 {
-		return nil, errors.New("некорректный ID пользователя")
-	}
-	return s.repo.Todo.GetByUserID(userID)
 }
 
 func (s *todoService) UpdateTodo(todo *models.Todo) error {
@@ -164,53 +140,6 @@ func (s *todoService) GetCompletedTodos() ([]models.Todo, error) {
 
 func (s *todoService) GetPendingTodos() ([]models.Todo, error) {
 	return s.repo.Todo.GetByStatus(false)
-}
-
-// Реализация UserService
-func (s *userService) CreateUser(user *models.User) error {
-	if user.Username == "" {
-		return errors.New("имя пользователя обязательно")
-	}
-	if user.Email == "" {
-		return errors.New("email обязателен")
-	}
-	if user.Password == "" {
-		return errors.New("пароль обязателен")
-	}
-
-	user.CreatedAt = time.Now()
-	user.UpdatedAt = time.Now()
-
-	return s.repo.User.Create(user)
-}
-
-func (s *userService) GetUserByID(id uint) (*models.User, error) {
-	if id == 0 {
-		return nil, errors.New("некорректный ID пользователя")
-	}
-	return s.repo.User.GetByID(id)
-}
-
-func (s *userService) GetUserByUsername(username string) (*models.User, error) {
-	if username == "" {
-		return nil, errors.New("имя пользователя не может быть пустым")
-	}
-	return s.repo.User.GetByUsername(username)
-}
-
-func (s *userService) UpdateUser(user *models.User) error {
-	if user.ID == 0 {
-		return errors.New("некорректный ID пользователя")
-	}
-	user.UpdatedAt = time.Now()
-	return s.repo.User.Update(user)
-}
-
-func (s *userService) DeleteUser(id uint) error {
-	if id == 0 {
-		return errors.New("некорректный ID пользователя")
-	}
-	return s.repo.User.Delete(id)
 }
 
 // Реализация CategoryService
@@ -266,7 +195,6 @@ func (s *taskService) CreateTask(req *models.CreateTaskRequest) (*models.Todo, e
 		Description: req.Description,
 		Priority:    req.Priority,
 		Completed:   false,
-		UserID:      req.UserID,
 		CategoryID:  req.CategoryID,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
@@ -321,9 +249,6 @@ func (s *taskService) UpdateTask(id int, req *models.UpdateTaskRequest) (*models
 	}
 	if req.Completed != nil {
 		todo.Completed = *req.Completed
-	}
-	if req.UserID != nil {
-		todo.UserID = req.UserID
 	}
 	if req.CategoryID != nil {
 		todo.CategoryID = req.CategoryID

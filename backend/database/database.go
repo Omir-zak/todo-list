@@ -2,13 +2,11 @@
 package database
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
-	"strconv"
 
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+	_ "github.com/lib/pq"
 
 	"todo-list/backend/config"
 	"todo-list/backend/internal/models"
@@ -16,14 +14,14 @@ import (
 
 // Database структура для работы с базой данных
 type Database struct {
-	DB *gorm.DB
+	DB *sql.DB
 }
 
-// NewConnection создает новое подключение к базе данных (для совместимости с start.go)
-func NewConnection(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+// NewConnection создает новое подключение к базе данных
+func NewConnection(cfg *config.DatabaseConfig) (*sql.DB, error) {
 	var port string
 	if p, ok := cfg.Port.(int); ok {
-		port = strconv.Itoa(p)
+		port = fmt.Sprintf("%d", p)
 	} else if p, ok := cfg.Port.(string); ok {
 		port = p
 	} else {
@@ -35,20 +33,12 @@ func NewConnection(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 		cfg.Host, port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
 	)
 
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
-	})
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	// Проверяем соединение
-	sqlDB, err := db.DB()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get database instance: %w", err)
-	}
-
-	if err := sqlDB.Ping(); err != nil {
+	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -66,16 +56,53 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 }
 
 // Migrate выполняет миграции базы данных
-func Migrate(db *gorm.DB) error {
+func Migrate(db *sql.DB) error {
 	log.Println("Running database migrations...")
 
-	err := db.AutoMigrate(
-		&models.User{},
-		&models.Category{},
-		&models.Todo{},
-	)
-	if err != nil {
-		return fmt.Errorf("failed to run migrations: %w", err)
+	// Создание таблицы категорий
+	categoryTableSQL := `
+	CREATE TABLE IF NOT EXISTS categories (
+		id SERIAL PRIMARY KEY,
+		name VARCHAR(255) NOT NULL,
+		color VARCHAR(7) DEFAULT '#007bff',
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	)`
+
+	// Создание таблицы задач
+	todoTableSQL := `
+	CREATE TABLE IF NOT EXISTS todos (
+		id SERIAL PRIMARY KEY,
+		title VARCHAR(255) NOT NULL,
+		description TEXT,
+		completed BOOLEAN DEFAULT FALSE,
+		priority VARCHAR(10) DEFAULT 'medium',
+		due_date TIMESTAMP,
+		category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	)`
+
+	// Создание индексов
+	indexesSQL := []string{
+		`CREATE INDEX IF NOT EXISTS idx_todos_category_id ON todos(category_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_todos_completed ON todos(completed)`,
+		`CREATE INDEX IF NOT EXISTS idx_todos_due_date ON todos(due_date)`,
+	}
+
+	// Выполняем миграции
+	tables := []string{categoryTableSQL, todoTableSQL}
+	for _, tableSQL := range tables {
+		if _, err := db.Exec(tableSQL); err != nil {
+			return fmt.Errorf("failed to create table: %w", err)
+		}
+	}
+
+	// Создаем индексы
+	for _, indexSQL := range indexesSQL {
+		if _, err := db.Exec(indexSQL); err != nil {
+			return fmt.Errorf("failed to create index: %w", err)
+		}
 	}
 
 	log.Println("Database migrations completed successfully")
@@ -84,11 +111,7 @@ func Migrate(db *gorm.DB) error {
 
 // Close закрывает соединение с базой данных
 func (d *Database) Close() error {
-	sqlDB, err := d.DB.DB()
-	if err != nil {
-		return err
-	}
-	return sqlDB.Close()
+	return d.DB.Close()
 }
 
 // Seed заполняет базу данных начальными данными
@@ -104,30 +127,22 @@ func (d *Database) Seed() error {
 	}
 
 	for _, category := range categories {
-		var existingCategory models.Category
-		result := d.DB.Where("name = ?", category.Name).First(&existingCategory)
-		if result.Error == gorm.ErrRecordNotFound {
-			if err := d.DB.Create(&category).Error; err != nil {
+		var count int
+		err := d.DB.QueryRow("SELECT COUNT(*) FROM categories WHERE name = $1", category.Name).Scan(&count)
+		if err != nil {
+			return fmt.Errorf("failed to check category existence: %w", err)
+		}
+
+		if count == 0 {
+			_, err = d.DB.Exec(
+				"INSERT INTO categories (name, color) VALUES ($1, $2)",
+				category.Name, category.Color,
+			)
+			if err != nil {
 				return fmt.Errorf("failed to create category %s: %w", category.Name, err)
 			}
 			log.Printf("Created category: %s", category.Name)
 		}
-	}
-
-	// Создаем пользователя по умолчанию
-	defaultUser := models.User{
-		Username: "admin",
-		Email:    "admin@todo.com",
-		Password: "admin123", // В реальном приложении нужно хешировать пароль
-	}
-
-	var existingUser models.User
-	result := d.DB.Where("username = ?", defaultUser.Username).First(&existingUser)
-	if result.Error == gorm.ErrRecordNotFound {
-		if err := d.DB.Create(&defaultUser).Error; err != nil {
-			return fmt.Errorf("failed to create default user: %w", err)
-		}
-		log.Printf("Created default user: %s", defaultUser.Username)
 	}
 
 	log.Println("Database seeding completed successfully")

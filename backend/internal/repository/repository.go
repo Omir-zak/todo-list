@@ -2,12 +2,13 @@
 package repository
 
 import (
-	"gorm.io/gorm"
+	"database/sql"
+	"time"
 	"todo-list/backend/internal/models"
 )
 
 // NewTaskRepository создает новый репозиторий задач (для совместимости с start.go)
-func NewTaskRepository(db *gorm.DB) *Repository {
+func NewTaskRepository(db *sql.DB) *Repository {
 	return NewRepository(db)
 }
 
@@ -16,20 +17,9 @@ type TodoRepository interface {
 	Create(todo *models.Todo) error
 	GetByID(id uint) (*models.Todo, error)
 	GetAll() ([]models.Todo, error)
-	GetByUserID(userID uint) ([]models.Todo, error)
 	Update(todo *models.Todo) error
 	Delete(id uint) error
 	GetByStatus(completed bool) ([]models.Todo, error)
-}
-
-// UserRepository интерфейс для работы с пользователями
-type UserRepository interface {
-	Create(user *models.User) error
-	GetByID(id uint) (*models.User, error)
-	GetByUsername(username string) (*models.User, error)
-	GetByEmail(email string) (*models.User, error)
-	Update(user *models.User) error
-	Delete(id uint) error
 }
 
 // CategoryRepository интерфейс для работы с категориями
@@ -44,123 +34,206 @@ type CategoryRepository interface {
 // Repository объединяет все репозитории
 type Repository struct {
 	Todo     TodoRepository
-	User     UserRepository
 	Category CategoryRepository
 }
 
 // todoRepo реализация TodoRepository
 type todoRepo struct {
-	db *gorm.DB
-}
-
-// userRepo реализация UserRepository
-type userRepo struct {
-	db *gorm.DB
+	db *sql.DB
 }
 
 // categoryRepo реализация CategoryRepository
 type categoryRepo struct {
-	db *gorm.DB
+	db *sql.DB
 }
 
 // NewRepository создает новый экземпляр Repository
-func NewRepository(db *gorm.DB) *Repository {
+func NewRepository(db *sql.DB) *Repository {
 	return &Repository{
 		Todo:     &todoRepo{db: db},
-		User:     &userRepo{db: db},
 		Category: &categoryRepo{db: db},
 	}
 }
 
 // Реализация TodoRepository
+
 func (r *todoRepo) Create(todo *models.Todo) error {
-	return r.db.Create(todo).Error
+	query := `
+		INSERT INTO todos (title, description, completed, priority, due_date, category_id, created_at, updated_at) 
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+		RETURNING id`
+
+	now := time.Now()
+	todo.CreatedAt = now
+	todo.UpdatedAt = now
+
+	return r.db.QueryRow(query, todo.Title, todo.Description, todo.Completed,
+		todo.Priority, todo.DueDate, todo.CategoryID,
+		todo.CreatedAt, todo.UpdatedAt).Scan(&todo.ID)
 }
 
 func (r *todoRepo) GetByID(id uint) (*models.Todo, error) {
-	var todo models.Todo
-	err := r.db.Preload("User").Preload("Category").First(&todo, id).Error
-	return &todo, err
+	todo := &models.Todo{}
+	query := `
+		SELECT id, title, description, completed, priority, due_date, 
+		       category_id, created_at, updated_at 
+		FROM todos WHERE id = $1`
+
+	err := r.db.QueryRow(query, id).Scan(
+		&todo.ID, &todo.Title, &todo.Description, &todo.Completed,
+		&todo.Priority, &todo.DueDate, &todo.CategoryID,
+		&todo.CreatedAt, &todo.UpdatedAt)
+
+	if err != nil {
+		return nil, err
+	}
+	return todo, nil
 }
 
 func (r *todoRepo) GetAll() ([]models.Todo, error) {
-	var todos []models.Todo
-	err := r.db.Preload("User").Preload("Category").Find(&todos).Error
-	return todos, err
-}
+	query := `
+		SELECT id, title, description, completed, priority, due_date, 
+		       category_id, created_at, updated_at 
+		FROM todos ORDER BY created_at DESC`
 
-func (r *todoRepo) GetByUserID(userID uint) ([]models.Todo, error) {
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
 	var todos []models.Todo
-	err := r.db.Where("user_id = ?", userID).Preload("Category").Find(&todos).Error
-	return todos, err
+	for rows.Next() {
+		var todo models.Todo
+		err := rows.Scan(
+			&todo.ID, &todo.Title, &todo.Description, &todo.Completed,
+			&todo.Priority, &todo.DueDate, &todo.CategoryID,
+			&todo.CreatedAt, &todo.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		todos = append(todos, todo)
+	}
+	return todos, rows.Err()
 }
 
 func (r *todoRepo) Update(todo *models.Todo) error {
-	return r.db.Save(todo).Error
+	query := `
+		UPDATE todos SET title = $1, description = $2, completed = $3, 
+		                 priority = $4, due_date = $5, category_id = $6, 
+		                 updated_at = $7 
+		WHERE id = $8`
+
+	todo.UpdatedAt = time.Now()
+	_, err := r.db.Exec(query, todo.Title, todo.Description, todo.Completed,
+		todo.Priority, todo.DueDate, todo.CategoryID,
+		todo.UpdatedAt, todo.ID)
+	return err
 }
 
 func (r *todoRepo) Delete(id uint) error {
-	return r.db.Delete(&models.Todo{}, id).Error
+	query := `DELETE FROM todos WHERE id = $1`
+	_, err := r.db.Exec(query, id)
+	return err
 }
 
 func (r *todoRepo) GetByStatus(completed bool) ([]models.Todo, error) {
+	query := `
+		SELECT id, title, description, completed, priority, due_date, 
+		       category_id, created_at, updated_at 
+		FROM todos WHERE completed = $1 ORDER BY created_at DESC`
+
+	rows, err := r.db.Query(query, completed)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
 	var todos []models.Todo
-	err := r.db.Where("completed = ?", completed).Preload("User").Preload("Category").Find(&todos).Error
-	return todos, err
-}
-
-// Реализация UserRepository
-func (r *userRepo) Create(user *models.User) error {
-	return r.db.Create(user).Error
-}
-
-func (r *userRepo) GetByID(id uint) (*models.User, error) {
-	var user models.User
-	err := r.db.Preload("Todos").First(&user, id).Error
-	return &user, err
-}
-
-func (r *userRepo) GetByUsername(username string) (*models.User, error) {
-	var user models.User
-	err := r.db.Where("username = ?", username).First(&user).Error
-	return &user, err
-}
-
-func (r *userRepo) GetByEmail(email string) (*models.User, error) {
-	var user models.User
-	err := r.db.Where("email = ?", email).First(&user).Error
-	return &user, err
-}
-
-func (r *userRepo) Update(user *models.User) error {
-	return r.db.Save(user).Error
-}
-
-func (r *userRepo) Delete(id uint) error {
-	return r.db.Delete(&models.User{}, id).Error
+	for rows.Next() {
+		var todo models.Todo
+		err := rows.Scan(
+			&todo.ID, &todo.Title, &todo.Description, &todo.Completed,
+			&todo.Priority, &todo.DueDate, &todo.CategoryID,
+			&todo.CreatedAt, &todo.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		todos = append(todos, todo)
+	}
+	return todos, rows.Err()
 }
 
 // Реализация CategoryRepository
+
 func (r *categoryRepo) Create(category *models.Category) error {
-	return r.db.Create(category).Error
+	query := `
+		INSERT INTO categories (name, color, created_at, updated_at) 
+		VALUES ($1, $2, $3, $4) 
+		RETURNING id`
+
+	now := time.Now()
+	category.CreatedAt = now
+	category.UpdatedAt = now
+
+	return r.db.QueryRow(query, category.Name, category.Color,
+		category.CreatedAt, category.UpdatedAt).Scan(&category.ID)
 }
 
 func (r *categoryRepo) GetByID(id uint) (*models.Category, error) {
-	var category models.Category
-	err := r.db.Preload("Todos").First(&category, id).Error
-	return &category, err
+	category := &models.Category{}
+	query := `
+		SELECT id, name, color, created_at, updated_at 
+		FROM categories WHERE id = $1`
+
+	err := r.db.QueryRow(query, id).Scan(
+		&category.ID, &category.Name, &category.Color,
+		&category.CreatedAt, &category.UpdatedAt)
+
+	if err != nil {
+		return nil, err
+	}
+	return category, nil
 }
 
 func (r *categoryRepo) GetAll() ([]models.Category, error) {
+	query := `
+		SELECT id, name, color, created_at, updated_at 
+		FROM categories ORDER BY name`
+
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
 	var categories []models.Category
-	err := r.db.Find(&categories).Error
-	return categories, err
+	for rows.Next() {
+		var category models.Category
+		err := rows.Scan(
+			&category.ID, &category.Name, &category.Color,
+			&category.CreatedAt, &category.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		categories = append(categories, category)
+	}
+	return categories, rows.Err()
 }
 
 func (r *categoryRepo) Update(category *models.Category) error {
-	return r.db.Save(category).Error
+	query := `
+		UPDATE categories SET name = $1, color = $2, updated_at = $3 
+		WHERE id = $4`
+
+	category.UpdatedAt = time.Now()
+	_, err := r.db.Exec(query, category.Name, category.Color,
+		category.UpdatedAt, category.ID)
+	return err
 }
 
 func (r *categoryRepo) Delete(id uint) error {
-	return r.db.Delete(&models.Category{}, id).Error
+	query := `DELETE FROM categories WHERE id = $1`
+	_, err := r.db.Exec(query, id)
+	return err
 }

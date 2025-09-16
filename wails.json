@@ -1,7 +1,7 @@
-
 {
   "name": "todo-list",
   "outputfilename": "todo-list",
+  "frontend:dir": "./frontend",
   "author": {
     "name": "Developer",
     "email": "dev@example.com"
